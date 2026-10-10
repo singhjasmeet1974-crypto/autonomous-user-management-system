@@ -1,0 +1,23 @@
+# Logs
+/logs/*.log
+/var/log/sys_user_mgmt.log
+*.log
+
+# Backups
+/backups/*.tar.gz
+/backups/*.tar
+*.tar.gz
+
+# Generated reports
+/reports/*.txt
+/reports/*.csv
+
+# Temporary files
+/tmp/
+*.tmp
+*.swp
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
