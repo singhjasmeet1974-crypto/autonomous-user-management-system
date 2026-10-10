@@ -273,9 +273,28 @@ docker build -t linux-user-mgmt .
 # Launch interactive menu inside container
 docker run --rm -it --privileged linux-user-mgmt
 
-# Run automated integration tests inside container
-docker run --rm -it --privileged linux-user-mgmt /bin/bash ./tests/test_integration.sh
+### E. Vercel Cloud Deployment (Web Terminal & Project Showcase)
+This project includes a web terminal simulator and college presentation showcase configured for zero-build deployment on [Vercel](https://vercel.com):
+
+#### Method 1: Deploy with Vercel CLI
+```bash
+npm i -g vercel
+vercel
 ```
+Accept default settings; Vercel automatically detects `vercel.json` and publishes your site.
+
+#### Method 2: Deploy via GitHub
+1. Push this repository to GitHub:
+   ```bash
+   git push origin main
+   ```
+2. Log into [Vercel](https://vercel.com) using your GitHub account.
+3. Click **Add New... → Project** and select this repository.
+4. Click **Deploy**. Vercel will build and assign an instant HTTPS domain (e.g., `https://automated-linux-user-management.vercel.app`).
+
+> **Architectural Note for College Faculty:**  
+> Vercel is a *serverless static hosting platform* without persistent root privileges or `/etc/passwd`.  
+> The web application on Vercel acts as an **interactive simulator & academic presentation dashboard**, while the production script `user_management.sh` runs natively with root privileges on enterprise Linux servers (Ubuntu/Debian/RHEL/AWS EC2).
 
 ---
 
@@ -285,6 +304,10 @@ docker run --rm -it --privileged linux-user-mgmt /bin/bash ./tests/test_integrat
 linux-user-management/
 ├── user_management.sh          # Main executable Bash application (v1.0.0)
 ├── Dockerfile                  # Container environment for isolated Ubuntu testing
+├── vercel.json                 # Vercel deployment configuration
+├── index.html                  # Interactive web terminal and presentation dashboard
+├── style.css                   # Modern dark terminal & glassmorphic styling
+├── app.js                      # Browser terminal simulator & virtual state engine
 ├── README.md                   # Comprehensive project documentation
 ├── LICENSE                     # MIT Open Source License
 ├── .gitignore                  # Git exclusion rules (logs, archives, reports)
