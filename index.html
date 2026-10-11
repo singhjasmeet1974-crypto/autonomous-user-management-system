@@ -80,19 +80,21 @@
 
             <div class="quick-command-bar">
               <span class="quick-label">⚡ Quick Actions:</span>
-              <button class="quick-btn" onclick="sendQuickOption('1')">[1] Create User</button>
-              <button class="quick-btn" onclick="sendQuickOption('2')">[2] Batch Users</button>
-              <button class="quick-btn" onclick="sendQuickOption('4')">[4] Create Group</button>
-              <button class="quick-btn" onclick="sendQuickOption('5')">[5] Add to Group</button>
-              <button class="quick-btn" onclick="sendQuickOption('7')">[7] Lock User</button>
-              <button class="quick-btn" onclick="sendQuickOption('8')">[8] Unlock User</button>
-              <button class="quick-btn" onclick="sendQuickOption('9')">[9] Password Expiry</button>
-              <button class="quick-btn red-accent" onclick="sendQuickOption('10')">[10] Safe Delete</button>
-              <button class="quick-btn" onclick="sendQuickOption('11')">[11] User Report</button>
-              <button class="quick-btn" onclick="sendQuickOption('12')">[12] Group Report</button>
-              <button class="quick-btn" onclick="sendQuickOption('13')">[13] Audit Logs</button>
-              <button class="quick-btn" onclick="sendQuickOption('14')">[14] Project Info</button>
-              <button class="quick-btn" onclick="resetTerminal()">🔄 Reset Screen</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('1')">[1] Create User</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('2')">[2] Batch Users</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('3')">[3] Modify User</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('4')">[4] Create Group</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('5')">[5] Add to Group</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('6')">[6] Remove Group</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('7')">[7] Lock User</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('8')">[8] Unlock User</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('9')">[9] Password Expiry</button>
+              <button type="button" class="quick-btn red-accent" onclick="sendQuickOption('10')">[10] Safe Delete</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('11')">[11] User Report</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('12')">[12] Group Report</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('13')">[13] Audit Logs</button>
+              <button type="button" class="quick-btn" onclick="sendQuickOption('14')">[14] Project Info</button>
+              <button type="button" class="quick-btn" onclick="resetTerminal()">🔄 Reset Screen</button>
             </div>
           </div>
 
@@ -104,8 +106,9 @@
           <!-- Terminal Interactive Input -->
           <form class="terminal-input-bar" id="terminal-form" onsubmit="handleCommandSubmit(event)">
             <span class="prompt-symbol">sysadmin@gndec-server:~$</span>
-            <input type="text" id="terminal-input" class="cmd-input" placeholder="Type menu option (1-15) or click Quick Actions above..." autocomplete="off" autofocus>
-            <button type="submit" class="send-btn">
+            <input type="text" id="terminal-input" class="cmd-input" placeholder="Type menu option (1-15) or click Quick Actions above..." autocomplete="off" spellcheck="false" autocapitalize="none" autofocus>
+            <button type="button" class="cancel-prompt-btn" id="cancel-prompt-btn" style="display: none;" onclick="cancelActivePrompt()" title="Cancel active prompt (Esc)">✕ Cancel</button>
+            <button type="submit" class="send-btn" id="terminal-submit-btn">
               <span>Execute</span>
               <kbd>↵</kbd>
             </button>

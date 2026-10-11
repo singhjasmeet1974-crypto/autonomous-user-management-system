@@ -90,7 +90,81 @@ document.addEventListener('DOMContentLoaded', () => {
   renderSystemState();
   renderVivaVoce();
   initTerminal();
+  initTerminalInteractions();
 });
+
+// Focus helper to always keep typing active
+function focusTerminal() {
+  const input = document.getElementById('terminal-input');
+  if (input) {
+    input.focus();
+  }
+}
+
+// Cancel current prompt cleanly
+function cancelActivePrompt() {
+  if (interactivePrompt) {
+    termPrint("\n^C [Operation cancelled by administrator]", 'term-yellow');
+    setInteractivePrompt(null);
+  }
+}
+
+// Global Terminal Focus & Keyboard Interception
+function initTerminalInteractions() {
+  const termContainer = document.querySelector('.terminal-container');
+  const termBody = document.getElementById('terminal-output');
+
+  // Click anywhere in terminal window focuses input (unless selecting text)
+  if (termContainer) {
+    termContainer.addEventListener('click', (e) => {
+      const selection = window.getSelection().toString();
+      if (!selection && !e.target.closest('button') && !e.target.closest('a')) {
+        focusTerminal();
+      }
+    });
+  }
+
+  if (termBody) {
+    termBody.addEventListener('click', (e) => {
+      const selection = window.getSelection().toString();
+      if (!selection && !e.target.closest('button') && !e.target.closest('a')) {
+        focusTerminal();
+      }
+    });
+  }
+
+  // Intercept keyboard typing globally when on the terminal tab
+  window.addEventListener('keydown', (e) => {
+    // If keyboard shortcuts with Ctrl/Alt/Meta, allow system defaults
+    if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+    // Handle Escape key to cancel prompt
+    if (e.key === 'Escape' && interactivePrompt) {
+      e.preventDefault();
+      cancelActivePrompt();
+      return;
+    }
+
+    // If currently typing inside another form or textarea, do nothing
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+      return;
+    }
+
+    // Check if terminal tab is currently active
+    const activeTab = document.querySelector('.nav-tab.active');
+    if (activeTab && activeTab.getAttribute('data-tab') === 'terminal') {
+      const input = document.getElementById('terminal-input');
+      if (input && document.activeElement !== input) {
+        input.focus();
+        // If single printable character, forward to input value
+        if (e.key.length === 1) {
+          input.value += e.key;
+          e.preventDefault();
+        }
+      }
+    }
+  });
+}
 
 // --- Tab Switching ---
 function initTabs() {
@@ -103,7 +177,12 @@ function initTabs() {
       tab.classList.add('active');
       const targetId = `tab-${tab.getAttribute('data-tab')}`;
       const targetPanel = document.getElementById(targetId);
-      if (targetPanel) targetPanel.classList.add('active');
+      if (targetPanel) {
+        targetPanel.classList.add('active');
+        if (tab.getAttribute('data-tab') === 'terminal') {
+          setTimeout(focusTerminal, 50);
+        }
+      }
     });
   });
 }
@@ -143,11 +222,14 @@ ADMINISTRATIVE TASK MENU:
 function initTerminal() {
   const termBody = document.getElementById('terminal-output');
   termBody.innerHTML = `<span class="term-banner">${escapeHtml(getBannerText())}</span>\n<span class="term-cyan">Type an option number (1-15) or click any Quick Action button above to test.</span>\n\n`;
+  termBody.scrollTop = termBody.scrollHeight;
+  setInteractivePrompt(null);
 }
 
 function resetTerminal() {
-  interactivePrompt = null;
+  setInteractivePrompt(null);
   initTerminal();
+  focusTerminal();
 }
 
 function termPrint(text, cssClass = '') {
@@ -159,22 +241,91 @@ function termPrint(text, cssClass = '') {
   termBody.scrollTop = termBody.scrollHeight;
 }
 
+// Set interactive prompt state with dynamic prompt symbols and placeholders
+function setInteractivePrompt(config) {
+  const promptSymbolEl = document.querySelector('.prompt-symbol');
+  const inputEl = document.getElementById('terminal-input');
+  const formEl = document.getElementById('terminal-form');
+  const cancelBtn = document.getElementById('cancel-prompt-btn');
+
+  if (!config) {
+    interactivePrompt = null;
+    if (promptSymbolEl) {
+      promptSymbolEl.textContent = 'sysadmin@gndec-server:~$';
+      promptSymbolEl.className = 'prompt-symbol';
+    }
+    if (inputEl) {
+      inputEl.placeholder = 'Type menu option (1-15) or click Quick Actions above...';
+    }
+    if (formEl) {
+      formEl.classList.remove('in-prompt');
+    }
+    if (cancelBtn) {
+      cancelBtn.style.display = 'none';
+    }
+    focusTerminal();
+    return;
+  }
+
+  interactivePrompt = config;
+  if (promptSymbolEl) {
+    promptSymbolEl.textContent = config.promptSymbol || 'input >';
+    promptSymbolEl.className = 'prompt-symbol prompt-active';
+  }
+  if (inputEl) {
+    inputEl.placeholder = config.placeholder || 'Type here and press Enter...';
+    inputEl.value = '';
+  }
+  if (formEl) {
+    formEl.classList.add('in-prompt');
+  }
+  if (cancelBtn) {
+    cancelBtn.style.display = 'inline-block';
+  }
+  focusTerminal();
+}
+
 function sendQuickOption(choice) {
-  // If in active prompt, cancel it first
-  interactivePrompt = null;
+  // Release focus from the clicked button so it does not trap keyboard events
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
+
+  // If in an active prompt, cancel previous prompt cleanly
+  if (interactivePrompt) {
+    termPrint(`\n[Pre-empted previous prompt to run Option ${choice}]`, 'term-dim');
+    setInteractivePrompt(null);
+  }
+
   processCommand(choice);
+  focusTerminal();
 }
 
 function handleCommandSubmit(e) {
-  e.preventDefault();
+  if (e) e.preventDefault();
   const input = document.getElementById('terminal-input');
-  const val = input.value.trim();
+  if (!input) return;
+  const rawVal = input.value;
+  const val = rawVal.trim();
   input.value = '';
-  if (!val && !interactivePrompt) return;
+  focusTerminal();
 
-  termPrint(`sysadmin@gndec-server:~$ ${val}`, 'term-bold');
+  // If on normal prompt and user submitted empty Enter
+  if (!val && !interactivePrompt) {
+    termPrint('sysadmin@gndec-server:~$', 'term-bold');
+    return;
+  }
+
+  // Display user's command line in the terminal transcript
+  const currentSymbol = document.querySelector('.prompt-symbol')?.textContent || 'sysadmin@gndec-server:~$';
+  termPrint(`${currentSymbol} ${rawVal}`, 'term-bold');
 
   if (interactivePrompt) {
+    // Built-in escape keyword
+    if (val.toLowerCase() === 'cancel' || val.toLowerCase() === 'exit') {
+      cancelActivePrompt();
+      return;
+    }
     interactivePrompt.handler(val);
   } else {
     processCommand(val);
@@ -244,9 +395,11 @@ function processCommand(choice) {
       logAuditEvent('SESSION_END', 'sysadmin', 'SUCCESS', 'Administrator logged out cleanly');
       termPrint("Thank you for using the Automated Linux User Management System.", 'term-green');
       termPrint("Guru Nanak Dev Engineering College, Ludhiana — Department of IT\n", 'term-dim');
+      setInteractivePrompt(null);
       break;
     default:
       termPrint(`Invalid selection '${choice}'. Please enter a valid number from 1 to 15.`, 'term-red');
+      setInteractivePrompt(null);
   }
 }
 
@@ -254,70 +407,100 @@ function processCommand(choice) {
 function startCreateUser() {
   termPrint("\n=== [Option 1] Create a New Linux User ===", 'term-bold');
   termPrint("Enter username to create: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
     step: 'username',
+    promptSymbol: 'username >',
+    placeholder: 'Enter username (e.g. dev_alex, rahul_it)...',
     data: {},
     handler: (input) => {
       const uname = input.toLowerCase().trim();
+      if (!uname) {
+        termPrint("User creation cancelled (empty username).", 'term-yellow');
+        setInteractivePrompt(null);
+        return;
+      }
       if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(uname)) {
         termPrint("Error: Invalid username format. Must begin with lowercase letter/underscore and be <= 32 chars.", 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       if (virtualState.users.some(u => u.username === uname)) {
         termPrint(`Error: User '${uname}' already exists on this system.`, 'term-red');
         logAuditEvent('USER_CREATE', uname, 'FAILURE', 'Account already exists');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
+
       interactivePrompt.data.username = uname;
       termPrint(`Username accepted: ${uname}`, 'term-green');
       termPrint("Enter user full name (GECOS comment field, optional): ");
-      interactivePrompt.handler = (nameInput) => {
-        const fullname = nameInput.replace(/:/g, '').trim() || 'New Staff';
-        interactivePrompt.data.name = fullname;
-        termPrint("Enter login shell [/bin/bash]: ");
-        interactivePrompt.handler = (shellInput) => {
-          const shell = shellInput.trim() || '/bin/bash';
-          interactivePrompt.data.shell = shell;
 
-          termPrint(`\nReview New User Configuration:`);
-          termPrint(`  - Username  : ${interactivePrompt.data.username}`, 'term-cyan');
-          termPrint(`  - Full Name : ${interactivePrompt.data.name}`);
-          termPrint(`  - Home Dir  : /home/${interactivePrompt.data.username}`);
-          termPrint(`  - Shell     : ${interactivePrompt.data.shell}`);
-          termPrint(`Confirm creation of account '${interactivePrompt.data.username}'? (y/N): `);
+      setInteractivePrompt({
+        step: 'name',
+        promptSymbol: 'full name >',
+        placeholder: 'Enter full name (or press Enter to skip)...',
+        data: interactivePrompt.data,
+        handler: (nameInput) => {
+          const fullname = nameInput.replace(/:/g, '').trim() || 'New Staff';
+          interactivePrompt.data.name = fullname;
+          termPrint(`Full name set to: ${fullname}`, 'term-dim');
+          termPrint("Enter login shell [/bin/bash]: ");
 
-          interactivePrompt.handler = (confirmInput) => {
-            if (/^[yY]$/.test(confirmInput)) {
-              const maxUid = Math.max(...virtualState.users.map(u => u.uid), 999);
-              const newUid = maxUid + 1;
-              const newUser = {
-                username: interactivePrompt.data.username,
-                uid: newUid,
-                gid: newUid,
-                name: interactivePrompt.data.name,
-                home: `/home/${interactivePrompt.data.username}`,
-                shell: interactivePrompt.data.shell,
-                status: 'active'
-              };
-              virtualState.users.push(newUser);
-              virtualState.groups.push({ name: newUser.username, gid: newUid, members: [newUser.username] });
+          setInteractivePrompt({
+            step: 'shell',
+            promptSymbol: 'shell [/bin/bash] >',
+            placeholder: 'Press Enter for default [/bin/bash] or type /bin/sh...',
+            data: interactivePrompt.data,
+            handler: (shellInput) => {
+              const shell = shellInput.trim() || '/bin/bash';
+              interactivePrompt.data.shell = shell;
 
-              termPrint(`\n[SUCCESS] Executing: useradd -m -s "${newUser.shell}" -c "${newUser.name}" "${newUser.username}"`, 'term-green');
-              termPrint(`Success: User account '${newUser.username}' created successfully with UID ${newUid}.`, 'term-green');
-              logAuditEvent('USER_CREATE', newUser.username, 'SUCCESS', `Created with home=${newUser.home}, shell=${newUser.shell}`);
-              renderSystemState();
-            } else {
-              termPrint("User creation cancelled by administrator.", 'term-yellow');
-              logAuditEvent('USER_CREATE', interactivePrompt.data.username, 'CANCELLED', 'Cancelled by admin prior to execution');
+              termPrint(`\nReview New User Configuration:`);
+              termPrint(`  - Username  : ${interactivePrompt.data.username}`, 'term-cyan');
+              termPrint(`  - Full Name : ${interactivePrompt.data.name}`);
+              termPrint(`  - Home Dir  : /home/${interactivePrompt.data.username}`);
+              termPrint(`  - Shell     : ${interactivePrompt.data.shell}`);
+              termPrint(`Confirm creation of account '${interactivePrompt.data.username}'? (y/N): `);
+
+              setInteractivePrompt({
+                step: 'confirm',
+                promptSymbol: 'confirm (y/N) >',
+                placeholder: "Type 'y' to confirm or 'n' to cancel...",
+                data: interactivePrompt.data,
+                handler: (confirmInput) => {
+                  if (/^[yY]$/.test(confirmInput.trim())) {
+                    const maxUid = Math.max(...virtualState.users.map(u => u.uid), 999);
+                    const newUid = maxUid + 1;
+                    const newUser = {
+                      username: interactivePrompt.data.username,
+                      uid: newUid,
+                      gid: newUid,
+                      name: interactivePrompt.data.name,
+                      home: `/home/${interactivePrompt.data.username}`,
+                      shell: interactivePrompt.data.shell,
+                      status: 'active'
+                    };
+                    virtualState.users.push(newUser);
+                    virtualState.groups.push({ name: newUser.username, gid: newUid, members: [newUser.username] });
+
+                    termPrint(`\n[SUCCESS] Executing: useradd -m -s "${newUser.shell}" -c "${newUser.name}" "${newUser.username}"`, 'term-green');
+                    termPrint(`Success: User account '${newUser.username}' created successfully with UID ${newUid}.`, 'term-green');
+                    logAuditEvent('USER_CREATE', newUser.username, 'SUCCESS', `Created with home=${newUser.home}, shell=${newUser.shell}`);
+                    renderSystemState();
+                  } else {
+                    termPrint("User creation cancelled by administrator.", 'term-yellow');
+                    logAuditEvent('USER_CREATE', interactivePrompt.data.username, 'CANCELLED', 'Cancelled by admin prior to execution');
+                  }
+                  setInteractivePrompt(null);
+                }
+              });
             }
-            interactivePrompt = null;
-          };
-        };
-      };
+          });
+        }
+      });
     }
-  };
+  });
 }
 
 // Option 2: Batch User Creation
@@ -345,55 +528,78 @@ function startBatchUsers() {
       termPrint(`  - ${uname.padEnd(16)} | SUCCESS | Created /home/${uname} (UID: ${newUid})`, 'term-green');
       logAuditEvent('BATCH_USER_CREATE', uname, 'SUCCESS', 'Batch created with shell=/bin/bash');
       count++;
+    } else {
+      termPrint(`  - ${uname.padEnd(16)} | SKIPPED | Account already exists`, 'term-yellow');
     }
   });
 
   termPrint(`\nBatch Summary: ${sampleBatch.length} Queued | ${count} Succeeded | 0 Failed.`, 'term-bold');
   renderSystemState();
+  setInteractivePrompt(null);
 }
 
 // Option 3: Modify User
 function startModifyUser() {
   termPrint("\n=== [Option 3] Modify Existing User Details ===", 'term-bold');
   termPrint("Enter username to modify: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'username >',
+    placeholder: 'Enter username to modify (e.g. sysadmin, dev_alex)...',
     handler: (uname) => {
-      const user = virtualState.users.find(u => u.username === uname.trim().toLowerCase());
+      const u = uname.trim().toLowerCase();
+      const user = virtualState.users.find(x => x.username === u);
       if (!user) {
-        termPrint(`Error: User '${uname}' does not exist.`, 'term-red');
-        interactivePrompt = null;
+        termPrint(`Error: User '${u}' does not exist.`, 'term-red');
+        setInteractivePrompt(null);
         return;
       }
       termPrint(`Found User '${user.username}' (Current GECOS: '${user.name}', Shell: '${user.shell}')`, 'term-cyan');
       termPrint("Enter new Full Name: ");
-      interactivePrompt.handler = (newName) => {
-        const updatedName = newName.replace(/:/g, '').trim() || user.name;
-        user.name = updatedName;
-        termPrint(`[SUCCESS] usermod -c "${updatedName}" "${user.username}"`, 'term-green');
-        termPrint(`Updated GECOS comment to: ${updatedName}`, 'term-green');
-        logAuditEvent('USER_MODIFY', user.username, 'SUCCESS', `Updated GECOS to '${updatedName}'`);
-        renderSystemState();
-        interactivePrompt = null;
-      };
+
+      setInteractivePrompt({
+        step: 'new_name',
+        promptSymbol: 'new name >',
+        placeholder: `Current: ${user.name} (Press Enter to keep)...`,
+        handler: (newName) => {
+          const updatedName = newName.replace(/:/g, '').trim() || user.name;
+          user.name = updatedName;
+          termPrint(`[SUCCESS] usermod -c "${updatedName}" "${user.username}"`, 'term-green');
+          termPrint(`Updated GECOS comment to: ${updatedName}`, 'term-green');
+          logAuditEvent('USER_MODIFY', user.username, 'SUCCESS', `Updated GECOS to '${updatedName}'`);
+          renderSystemState();
+          setInteractivePrompt(null);
+        }
+      });
     }
-  };
+  });
 }
 
 // Option 4: Create Group
 function startCreateGroup() {
   termPrint("\n=== [Option 4] Create a Linux Group ===", 'term-bold');
   termPrint("Enter new group name: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'groupname',
+    promptSymbol: 'group name >',
+    placeholder: 'Enter group name (e.g. devops, cloud_team)...',
     handler: (gname) => {
       const name = gname.trim().toLowerCase();
+      if (!name) {
+        termPrint("Operation cancelled (empty group name).", 'term-yellow');
+        setInteractivePrompt(null);
+        return;
+      }
       if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(name)) {
         termPrint("Error: Invalid group name format.", 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       if (virtualState.groups.some(g => g.name === name)) {
         termPrint(`Error: Group '${name}' already exists.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       const maxGid = Math.max(...virtualState.groups.map(g => g.gid), 999);
@@ -402,104 +608,128 @@ function startCreateGroup() {
       termPrint(`[SUCCESS] groupadd "${name}" (Allocated GID: ${newGid})`, 'term-green');
       logAuditEvent('GROUP_CREATE', name, 'SUCCESS', `Created group with GID ${newGid}`);
       renderSystemState();
-      interactivePrompt = null;
+      setInteractivePrompt(null);
     }
-  };
+  });
 }
 
 // Option 5: Add to Group
 function startAddToGroup() {
   termPrint("\n=== [Option 5] Add User to Supplementary Group ===", 'term-bold');
   termPrint("Enter username: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'username >',
+    placeholder: 'Enter username (e.g. sysadmin, dev_alex)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: User '${u}' not found.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       termPrint("Enter group name to append: ");
-      interactivePrompt.handler = (gname) => {
-        const g = gname.trim().toLowerCase();
-        const group = virtualState.groups.find(x => x.name === g);
-        if (!group) {
-          termPrint(`Error: Group '${g}' not found.`, 'term-red');
-          interactivePrompt = null;
-          return;
+
+      setInteractivePrompt({
+        step: 'groupname',
+        promptSymbol: 'group name >',
+        placeholder: 'Enter group to append (e.g. sudo, developers)...',
+        handler: (gname) => {
+          const g = gname.trim().toLowerCase();
+          const group = virtualState.groups.find(x => x.name === g);
+          if (!group) {
+            termPrint(`Error: Group '${g}' not found.`, 'term-red');
+            setInteractivePrompt(null);
+            return;
+          }
+          if (group.members.includes(u)) {
+            termPrint(`Notice: User '${u}' is already a member of '${g}'.`, 'term-yellow');
+          } else {
+            group.members.push(u);
+            termPrint(`[SUCCESS] usermod -aG "${g}" "${u}" (Preserved existing groups)`, 'term-green');
+            termPrint(`User '${u}' added to supplementary group '${g}'.`, 'term-green');
+            logAuditEvent('GROUP_ADD_USER', `${u}:${g}`, 'SUCCESS', 'Added user to supplementary group');
+            renderSystemState();
+          }
+          setInteractivePrompt(null);
         }
-        if (group.members.includes(u)) {
-          termPrint(`Notice: User '${u}' is already a member of '${g}'.`, 'term-yellow');
-        } else {
-          group.members.push(u);
-          termPrint(`[SUCCESS] usermod -aG "${g}" "${u}" (Preserved existing groups)`, 'term-green');
-          termPrint(`User '${u}' added to supplementary group '${g}'.`, 'term-green');
-          logAuditEvent('GROUP_ADD_USER', `${u}:${g}`, 'SUCCESS', 'Added user to supplementary group');
-          renderSystemState();
-        }
-        interactivePrompt = null;
-      };
+      });
     }
-  };
+  });
 }
 
 // Option 6: Remove from Group
 function startRemoveFromGroup() {
   termPrint("\n=== [Option 6] Remove User from Supplementary Group ===", 'term-bold');
   termPrint("Enter username: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'username >',
+    placeholder: 'Enter username (e.g. sysadmin)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: User '${u}' not found.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       termPrint("Enter group name to remove from: ");
-      interactivePrompt.handler = (gname) => {
-        const g = gname.trim().toLowerCase();
-        const group = virtualState.groups.find(x => x.name === g);
-        if (!group) {
-          termPrint(`Error: Group '${g}' not found.`, 'term-red');
-          interactivePrompt = null;
-          return;
+
+      setInteractivePrompt({
+        step: 'groupname',
+        promptSymbol: 'group name >',
+        placeholder: 'Enter supplementary group to remove from...',
+        handler: (gname) => {
+          const g = gname.trim().toLowerCase();
+          const group = virtualState.groups.find(x => x.name === g);
+          if (!group) {
+            termPrint(`Error: Group '${g}' not found.`, 'term-red');
+            setInteractivePrompt(null);
+            return;
+          }
+          if (group.gid === user.gid) {
+            termPrint(`Security Error: '${g}' is user's PRIMARY group. Cannot remove without altering primary GID.`, 'term-red');
+            logAuditEvent('GROUP_REMOVE_USER', `${u}:${g}`, 'FAILURE', 'Attempted removal from primary group');
+            setInteractivePrompt(null);
+            return;
+          }
+          group.members = group.members.filter(m => m !== u);
+          termPrint(`[SUCCESS] gpasswd -d "${u}" "${g}"`, 'term-green');
+          termPrint(`User '${u}' removed from group '${g}'.`, 'term-green');
+          logAuditEvent('GROUP_REMOVE_USER', `${u}:${g}`, 'SUCCESS', 'Removed user from supplementary group');
+          renderSystemState();
+          setInteractivePrompt(null);
         }
-        if (group.gid === user.gid) {
-          termPrint(`Security Error: '${g}' is user's PRIMARY group. Cannot remove without altering primary GID.`, 'term-red');
-          logAuditEvent('GROUP_REMOVE_USER', `${u}:${g}`, 'FAILURE', 'Attempted removal from primary group');
-          interactivePrompt = null;
-          return;
-        }
-        group.members = group.members.filter(m => m !== u);
-        termPrint(`[SUCCESS] gpasswd -d "${u}" "${g}"`, 'term-green');
-        termPrint(`User '${u}' removed from group '${g}'.`, 'term-green');
-        logAuditEvent('GROUP_REMOVE_USER', `${u}:${g}`, 'SUCCESS', 'Removed user from supplementary group');
-        renderSystemState();
-        interactivePrompt = null;
-      };
+      });
     }
-  };
+  });
 }
 
 // Option 7: Lock User
 function startLockUser() {
   termPrint("\n=== [Option 7] Lock User Account ===", 'term-bold');
   termPrint("Enter username to lock: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'lock user >',
+    placeholder: 'Enter username to lock (e.g. dev_alex)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       if (u === 'root' || u === 'sysadmin') {
         termPrint(`[CRITICAL ACCESS CONTROL BLOCK] Refusing to lock protected operator/root account '${u}'.`, 'term-red');
         logAuditEvent('USER_LOCK', u, 'BLOCKED', 'Attempted to lock protected operator/root');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: User '${u}' does not exist.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       termPrint("\n[SECURITY NOTE] 'passwd -l' places '!' prefix in /etc/shadow. Prevents password login only.", 'term-yellow');
@@ -507,70 +737,88 @@ function startLockUser() {
       termPrint(`[SUCCESS] passwd -l "${u}" (Account password locked)`, 'term-green');
       logAuditEvent('USER_LOCK', u, 'SUCCESS', 'Account locked via passwd -l');
       renderSystemState();
-      interactivePrompt = null;
+      setInteractivePrompt(null);
     }
-  };
+  });
 }
 
 // Option 8: Unlock User
 function startUnlockUser() {
   termPrint("\n=== [Option 8] Unlock User Account ===", 'term-bold');
   termPrint("Enter username to unlock: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'unlock user >',
+    placeholder: 'Enter username to unlock (e.g. dev_alex)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: User '${u}' not found.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       user.status = (user.uid < 1000) ? 'system' : 'active';
       termPrint(`[SUCCESS] passwd -u "${u}" (Password authentication restored)`, 'term-green');
       logAuditEvent('USER_UNLOCK', u, 'SUCCESS', 'Account unlocked via passwd -u');
       renderSystemState();
-      interactivePrompt = null;
+      setInteractivePrompt(null);
     }
-  };
+  });
 }
 
 // Option 9: Password Expiry (chage)
 function startPasswordExpiry() {
   termPrint("\n=== [Option 9] Configure Password Expiry (chage) ===", 'term-bold');
   termPrint("Enter username: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'username >',
+    placeholder: 'Enter username (e.g. sysadmin, dev_alex)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: User '${u}' not found.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       termPrint(`Current Aging for '${u}': Max Days: 90 | Warn Days: 7 | Must Change: No`);
       termPrint("Action: 1: Set Max Lifetime (chage -M), 2: Force Reset Next Login (chage -d 0)");
       termPrint("Enter choice [1-2]: ");
-      interactivePrompt.handler = (c) => {
-        if (c === '2') {
-          termPrint(`[SUCCESS] chage -d 0 "${u}" (Password set to Epoch 0)`, 'term-green');
-          termPrint(`User '${u}' will be prompted to change password immediately on next login.`, 'term-green');
-          logAuditEvent('PASSWORD_AGING', u, 'SUCCESS', 'Forced password change on next login (chage -d 0)');
-        } else {
-          termPrint(`[SUCCESS] chage -M 60 "${u}"`, 'term-green');
-          termPrint(`Maximum password lifespan set to 60 days.`, 'term-green');
-          logAuditEvent('PASSWORD_AGING', u, 'SUCCESS', 'Set max age to 60 days');
+
+      setInteractivePrompt({
+        step: 'action',
+        promptSymbol: 'choice [1-2] >',
+        placeholder: 'Type 1 (Max age 60d) or 2 (Force reset)...',
+        handler: (c) => {
+          if (c === '2') {
+            termPrint(`[SUCCESS] chage -d 0 "${u}" (Password set to Epoch 0)`, 'term-green');
+            termPrint(`User '${u}' will be prompted to change password immediately on next login.`, 'term-green');
+            logAuditEvent('PASSWORD_AGING', u, 'SUCCESS', 'Forced password change on next login (chage -d 0)');
+          } else {
+            termPrint(`[SUCCESS] chage -M 60 "${u}"`, 'term-green');
+            termPrint(`Maximum password lifespan set to 60 days.`, 'term-green');
+            logAuditEvent('PASSWORD_AGING', u, 'SUCCESS', 'Set max age to 60 days');
+          }
+          setInteractivePrompt(null);
         }
-        interactivePrompt = null;
-      };
+      });
     }
-  };
+  });
 }
 
 // Option 10: Safe Deletion with Verified Backup
 function startDeleteUser() {
   termPrint("\n=== [Option 10] High-Security Safe User Account Deletion ===", 'term-red');
   termPrint("Enter username to delete: ");
-  interactivePrompt = {
+
+  setInteractivePrompt({
+    step: 'username',
+    promptSymbol: 'delete user >',
+    placeholder: 'Enter username to delete (e.g. dev_alex, qa_priya)...',
     handler: (uname) => {
       const u = uname.trim().toLowerCase();
       // Shielding root and current operator
@@ -578,13 +826,13 @@ function startDeleteUser() {
         termPrint(`\n[CRITICAL ACCESS CONTROL BLOCK]`, 'term-red');
         termPrint(`The account '${u}' is recognized as root or the active operator. Automated deletion blocked!`, 'term-red');
         logAuditEvent('USER_DELETE', u, 'BLOCKED', 'Attempted deletion of protected/active operator');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
       const user = virtualState.users.find(x => x.username === u);
       if (!user) {
         termPrint(`Error: Account '${u}' does not exist.`, 'term-red');
-        interactivePrompt = null;
+        setInteractivePrompt(null);
         return;
       }
 
@@ -593,41 +841,51 @@ function startDeleteUser() {
       termPrint(`  2. BACKUP home directory to secure tar.gz, then delete account and home`);
       termPrint(`Enter choice [1-2]: `);
 
-      interactivePrompt.handler = (stratChoice) => {
-        const doBackup = (stratChoice === '2');
-        if (doBackup) {
-          const ts = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 14);
-          const archName = `backup_${u}_${ts}.tar.gz`;
-          virtualState.backups.unshift({ name: archName, size: '2.4 MB', date: new Date().toLocaleTimeString() });
-          termPrint(`\n[BACKUP STAGE] Compressing /home/${u} into /var/backups/user_mgmt_backups/${archName}...`, 'term-cyan');
-          termPrint(`[VERIFICATION] tar -tzf verified archive integrity: 100% PASS.`, 'term-green');
-        }
-
-        termPrint(`\n═══════════════════════════════════════════════════════════════════════`, 'term-red');
-        termPrint(` [MANDATORY CONFIRMATION - DESTRUCTIVE OPERATION]`, 'term-red');
-        termPrint(`═══════════════════════════════════════════════════════════════════════`, 'term-red');
-        termPrint(`To prevent accidental deletion, type exactly: DELETE ${u}`, 'term-bold');
-        termPrint(`Confirmation: `);
-
-        interactivePrompt.handler = (token) => {
-          if (token === `DELETE ${u}`) {
-            virtualState.users = virtualState.users.filter(x => x.username !== u);
-            virtualState.groups.forEach(g => {
-              g.members = g.members.filter(m => m !== u);
-            });
-            termPrint(`\n[SUCCESS] userdel ${doBackup ? '-r ' : ''}"${u}"`, 'term-green');
-            termPrint(`Account '${u}' permanently removed from system database.`, 'term-green');
-            logAuditEvent('USER_DELETE', u, 'SUCCESS', `Deleted with strategy=${doBackup ? 'Backup-and-delete' : 'Account-only'}`);
-            renderSystemState();
-          } else {
-            termPrint(`\nConfirmation phrase mismatch ('${token}' != 'DELETE ${u}'). Deletion ABORTED safely.`, 'term-yellow');
-            logAuditEvent('USER_DELETE', u, 'CANCELLED', 'Confirmation token mismatch');
+      setInteractivePrompt({
+        step: 'strategy',
+        promptSymbol: 'strategy [1-2] >',
+        placeholder: 'Type 1 (Account only) or 2 (Backup + delete)...',
+        handler: (stratChoice) => {
+          const doBackup = (stratChoice === '2');
+          if (doBackup) {
+            const ts = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 14);
+            const archName = `backup_${u}_${ts}.tar.gz`;
+            virtualState.backups.unshift({ name: archName, size: '2.4 MB', date: new Date().toLocaleTimeString() });
+            termPrint(`\n[BACKUP STAGE] Compressing /home/${u} into /var/backups/user_mgmt_backups/${archName}...`, 'term-cyan');
+            termPrint(`[VERIFICATION] tar -tzf verified archive integrity: 100% PASS.`, 'term-green');
           }
-          interactivePrompt = null;
-        };
-      };
+
+          termPrint(`\n═══════════════════════════════════════════════════════════════════════`, 'term-red');
+          termPrint(` [MANDATORY CONFIRMATION - DESTRUCTIVE OPERATION]`, 'term-red');
+          termPrint(`═══════════════════════════════════════════════════════════════════════`, 'term-red');
+          termPrint(`To prevent accidental deletion, type exactly: DELETE ${u}`, 'term-bold');
+          termPrint(`Confirmation: `);
+
+          setInteractivePrompt({
+            step: 'confirm',
+            promptSymbol: 'confirm >',
+            placeholder: `Type exactly: DELETE ${u}`,
+            handler: (token) => {
+              if (token.trim() === `DELETE ${u}`) {
+                virtualState.users = virtualState.users.filter(x => x.username !== u);
+                virtualState.groups.forEach(g => {
+                  g.members = g.members.filter(m => m !== u);
+                });
+                termPrint(`\n[SUCCESS] userdel ${doBackup ? '-r ' : ''}"${u}"`, 'term-green');
+                termPrint(`Account '${u}' permanently removed from system database.`, 'term-green');
+                logAuditEvent('USER_DELETE', u, 'SUCCESS', `Deleted with strategy=${doBackup ? 'Backup-and-delete' : 'Account-only'}`);
+                renderSystemState();
+              } else {
+                termPrint(`\nConfirmation phrase mismatch ('${token}' != 'DELETE ${u}'). Deletion ABORTED safely.`, 'term-yellow');
+                logAuditEvent('USER_DELETE', u, 'CANCELLED', 'Confirmation token mismatch');
+              }
+              setInteractivePrompt(null);
+            }
+          });
+        }
+      });
     }
-  };
+  });
 }
 
 // Option 11: User Report

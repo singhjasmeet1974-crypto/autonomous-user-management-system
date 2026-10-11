@@ -360,8 +360,27 @@ body {
   align-items: center;
   background: #0b0f17;
   border-top: 1px solid var(--border-subtle);
-  padding: 0.6rem 1rem;
+  padding: 0.65rem 1rem;
   gap: 0.75rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.terminal-input-bar:focus-within {
+  border-top-color: rgba(0, 240, 255, 0.5);
+  box-shadow: 0 -4px 20px rgba(0, 240, 255, 0.12);
+  background: #0d121e;
+}
+
+.terminal-input-bar.in-prompt {
+  background: #0f182c;
+  border-top-color: var(--cyan-glow);
+  box-shadow: 0 -4px 22px rgba(0, 240, 255, 0.25);
+  animation: prompt-glow 2s infinite alternate;
+}
+
+@keyframes prompt-glow {
+  0% { border-top-color: rgba(0, 240, 255, 0.4); }
+  100% { border-top-color: rgba(0, 240, 255, 0.9); }
 }
 
 .prompt-symbol {
@@ -370,6 +389,14 @@ body {
   color: var(--green-glow);
   font-weight: 600;
   user-select: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+
+.prompt-symbol.prompt-active {
+  color: var(--cyan-glow);
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
 }
 
 .cmd-input {
@@ -379,12 +406,39 @@ body {
   outline: none;
   color: #fff;
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 0.92rem;
+  caret-color: var(--cyan-glow);
 }
 
 .cmd-input::placeholder {
   color: var(--text-muted);
   font-size: 0.82rem;
+  transition: color 0.2s ease;
+}
+
+.terminal-input-bar.in-prompt .cmd-input::placeholder {
+  color: #7dd3fc;
+  opacity: 0.85;
+}
+
+.cancel-prompt-btn {
+  background: rgba(255, 51, 102, 0.15);
+  border: 1px solid rgba(255, 51, 102, 0.4);
+  color: #ff6b8b;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.cancel-prompt-btn:hover {
+  background: rgba(255, 51, 102, 0.35);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 51, 102, 0.4);
 }
 
 .send-btn {
